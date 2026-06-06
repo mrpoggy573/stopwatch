@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speedrun Utility Timer</title>
+    <style>
+        /* Base page cleanup */
+        body { 
+            margin: 0; 
+            padding: 0; 
+            background: #000; 
+            overflow: hidden; 
+        }
+        
+        /* Fullscreen structural wrapper that manages scrolling */
+        #customContainer { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100vw; 
+            height: 100vh; 
+            background: #000; 
+            color: #fff; 
+            font-family: monospace; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            z-index: 999999; 
+            overflow-y: scroll; 
+            /* Removed scroll-behavior: smooth; for instant snapping */
+        }
+        
+        /* Top display region (Only visual elements seen here) */
+        #displayArea { 
+            height: 100vh; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            width: 100%; 
+            flex-shrink: 0; 
+        }
+        
+        #timeDisplay { 
+            font-size: 15vw; 
+            font-weight: bold; 
+            user-select: none;
+        }
+        
+        /* Lower hidden control configuration zone */
+        #inputArea { 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            width: 100%; 
+            flex-shrink: 0; 
+            background: #111; 
+            gap: 15px;
+        }
+        
+        /* UI Control components */
+        .mode-indicator {
+            font-size: 1.5rem;
+            color: #aaa;
+            margin-bottom: 10px;
+        }
+        
+        input { 
+            font-size: 2rem; 
+            padding: 10px; 
+            text-align: center; 
+            width: 200px; 
+            background: #222; 
+            color: #fff; 
+            border: 2px solid #444; 
+            border-radius: 5px; 
+        }
+        
+        /* Hide configuration input box if mode doesn't need it */
+        input.hidden {
+            display: none;
+        }
+        
+        button { 
+            font-size: 1.3rem; 
+            padding: 10px 20px; 
+            cursor: pointer; 
+            background: #444; 
+            color: white; 
+            border: none; 
+            border-radius: 5px; 
+            min-width: 220px;
+            transition: background 0.2s;
+        }
+        
+        button:hover { 
+            background: #555; 
+        }
+        
+        #toggleModeBtn {
+            background: #2b4c7e;
+        }
+        #toggleModeBtn:hover {
+            background: #365f9d;
+        }
+
+        #clearBtn {
+            background: #7a2a2a;
+        }
+        #clearBtn:hover {
+            background: #963535;
+        }
+        
+        .instructions {
+            color: #666;
+            margin-top: 15px;
+            font-size: 1rem;
+            text-align: center;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="customContainer">
+        <!-- Visual Screen Region -->
+        <div id="displayArea">
+            <div id="timeDisplay">0.000</div>
+        </div>
+        
+        <!-- Config Hidden Region (Scroll down to see) -->
+        <div id="inputArea">
+            <div class="mode-indicator" id="currentModeLabel">Mode: Stopwatch</div>
+            <input type="text" id="targetInput" class="hidden" value="11.033" placeholder="e.g. 11.033">
+            <button id="toggleModeBtn">Switch to 'Go To' Mode</button>
+            <button id="startBtn">START TIMER</button>
+            <button id="clearBtn">CLEAR TIME</button>
+            
+            <div class="instructions">
+                Press <strong>Spacebar</strong> globally to Start/Stop.<br>
+                Press <strong>R key</strong> globally to Reset/Clear.<br>
+                Scroll down here anytime to tweak options.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM element hooks
+        const container = document.getElementById('customContainer');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const targetInput = document.getElementById('targetInput');
+        const toggleModeBtn = document.getElementById('toggleModeBtn');
+        const startBtn = document.getElementById('startBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const currentModeLabel = document.getElementById('currentModeLabel');
+
+        // Application State Definitions
+        let startTime, timerId;
+        let running = false;
+        let elapsedTimeBeforePause = 0; // Tracks accumulated time for normal stopwatch style stops
+        let currentMode = 'stopwatch';  // 'stopwatch' or 'goto'
+
+        // Mode Toggling Execution 
+        toggleModeBtn.onclick = () => {
+            resetTimer();
+            if (currentMode === 'stopwatch') {
+                currentMode = 'goto';
+                currentModeLabel.textContent = "Mode: 'Go To' Target";
+                toggleModeBtn.textContent = "Switch to Stopwatch Mode";
+                targetInput.classList.remove('hidden');
+            } else {
+                currentMode = 'stopwatch';
+                currentModeLabel.textContent = "Mode: Stopwatch";
+                toggleModeBtn.textContent = "Switch to 'Go To' Mode";
+                targetInput.classList.add('hidden');
+            }
+        };
+
+        // Primary Control Trigger Logic
+        function handleTrigger() {
+            if (!running) {
+                startTimer();
+            } else {
+                stopTimer();
+            }
+        }
+
+        // Action routing hooks
+        startBtn.onclick = handleTrigger;
+        clearBtn.onclick = resetTimer;
+
+        // Global hotkey mapping interception loops
+        window.addEventListener('keydown', (e) => {
+            // Prevent accidental triggers if typing into input config field
+            if (document.activeElement === targetInput) return;
+            
+            if (e.code === 'Space') {
+                e.preventDefault(); // Prevents standard spacebar page tracking jumps
+                handleTrigger();
+            }
+            
+            if (e.code === 'KeyR') {
+                resetTimer();
+            }
+        });
+
+        function startTimer() {
+            running = true;
+            startBtn.textContent = 'STOP TIMER';
+            timeDisplay.style.color = '#fff';
+            
+            // Instantly snap view focus upward to frame window cleanly
+            container.scrollTo({ top: 0, behavior: 'instant' });
+            
+            if (currentMode === 'goto') {
+                // 'Go To' wipes clean from zero point parameter logic
+                startTime = performance.now();
+            } else {
+                // Classic stopwatch calculates from original baseline drift minus pauses
+                startTime = performance.now() - (elapsedTimeBeforePause * 1000);
+            }
+            
+            timerId = requestAnimationFrame(updateTimer);
+        }
+
+        function stopTimer() {
+            cancelAnimationFrame(timerId);
+            running = false;
+            startBtn.textContent = 'START TIMER';
+            timeDisplay.style.color = '#888888'; // Turns grey when manually stopped
+            
+            if (currentMode === 'stopwatch') {
+                elapsedTimeBeforePause = (performance.now() - startTime) / 1000;
+                timeDisplay.textContent = elapsedTimeBeforePause.toFixed(3);
+            }
+        }
+
+        function resetTimer() {
+            cancelAnimationFrame(timerId);
+            running = false;
+            elapsedTimeBeforePause = 0;
+            startBtn.textContent = 'START TIMER';
+            timeDisplay.style.color = '#fff';
+            timeDisplay.textContent = '0.000';
+        }
+
+        // Live Framerate Calculation Engine 
+        function updateTimer() {
+            let elapsed = (performance.now() - startTime) / 1000;
+            
+            if (currentMode === 'goto') {
+                let targetTime = parseFloat(targetInput.value) || 0;
+                
+                if (elapsed >= targetTime) {
+                    timeDisplay.textContent = targetTime.toFixed(3);
+                    timeDisplay.style.color = '#888888'; // Lock visual window to dark slate grey
+                    running = false;
+                    startBtn.textContent = 'START TIMER';
+                    return;
+                }
+            }
+
+            timeDisplay.textContent = elapsed.toFixed(3);
+            timerId = requestAnimationFrame(updateTimer);
+        }
+    </script>
+</body>
+</html>
